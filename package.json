@@ -1,0 +1,21 @@
+{
+  "name": "movieapibackend",
+  "version": "1.0.0",
+  "description": "Movie Api",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "env": "^0.0.2",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "mongoose": "^7.5.3",
+    "nodemailer": "^6.9.5",
+    "nodemon": "^3.0.1"
+  }
+}
