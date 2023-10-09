@@ -10,6 +10,23 @@ const useValidator = [
     .isLength({ min: 6, max: 20 })
     .withMessage('Password must be at least 6 characters long))'),
 ]
+const validatePassword = [
+  check('newPassword')
+    .trim()
+    .not()
+    .isEmpty()
+    .isLength({ min: 6, max: 20 })
+    .withMessage('Password must be at least 6 characters long))'),
+]
+const validateSignIn = [
+  check('email').normalizeEmail().isEmail().withMessage('Email is invalid'),
+  check('password')
+    .trim()
+    .not()
+    .isEmpty()
+    .isLength({ min: 6, max: 20 })
+    .withMessage('Password must be at least 6 characters long))'),
+]
 const validate = (req, res, next) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
@@ -19,7 +36,10 @@ const validate = (req, res, next) => {
   }
   next()
 }
+
 module.exports = {
   useValidator,
   validate,
+  validatePassword,
+  validateSignIn,
 }

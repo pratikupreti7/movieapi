@@ -1,9 +1,15 @@
 const User = require('../models/user')
 const emailVerificationToken = require('../models/emailVerificationToken')
+const passwordResetToken = require('../models/passwordResetToken')
 const nodemailer = require('nodemailer')
+const crypto = require('crypto')
+const jwt = require('jsonwebtoken')
 const { isValidObjectId } = require('mongoose')
 const { generateOTP, mailTransporterGeneration } = require('../utils/mail')
-createUser = async (req, res) => {
+const { generateRandomByte } = require('../utils/helper')
+const { reset } = require('nodemon')
+
+const createUser = async (req, res) => {
   // '/' is the root path
 
   const { name, email, password } = req.body
@@ -191,8 +197,150 @@ const resendEmailVerification = async (req, res) => {
   })
 }
 
+const forgotPassword = async (req, res) => {
+  const { email } = req.body
+  if (!email) {
+    return res.status(401).json({
+      error: 'Please provide email',
+    })
+  }
+  const user = await User.findOne({ email })
+  if (!user) {
+    return res.status(401).json({
+      error: 'User not found',
+    })
+  }
+  const hasToken = await passwordResetToken.findOne({ owner: user._id })
+  if (hasToken) {
+    return res.status(401).json({
+      error:
+        'Please wait for atleast one hour to resend OTP.Please do check your spam folder',
+    })
+  }
+  const token = await generateRandomByte()
+  const newPasswordResetToken = new passwordResetToken({
+    owner: user._id,
+    token,
+  })
+  console.log(user._id)
+  await newPasswordResetToken.save()
+  const resetPasswordUrl = `http://localhost:3000/reset-password?token=${token}&id=${user._id}`
+
+  var transport = mailTransporterGeneration()
+
+  const mailOptions = {
+    from: 'notifations@movieapp.com',
+    to: user.email,
+    subject: 'Password Reset for Couch Potato',
+    html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+            <h1 style="color: #333; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px;">Hello ${user.name}!</h1>
+            <p style="font-size: 16px; color: #555; margin-top: 20px;">We received a request to reset your password for Couch Potato. Please click the link below to set a new password:</p>
+            <div style="background-color: #f7f7f7; padding: 15px; text-align: center; margin-top: 20px; border-radius: 5px;">
+                <a href="${resetPasswordUrl}" style="font-size: 16px; color: #2A9DF4; text-decoration: none;">Reset Password</a>
+            </div>
+            <p style="font-size: 16px; color: #555; margin-top: 20px;">If you didn't request this password reset, please ignore this email or contact our support team.</p>
+            <p style="font-size: 14px; color: #777; margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 10px;">Thank you,<br>MovieApp Team</p>
+        </div>
+    `,
+  }
+
+  transport.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error('Email send error:', error)
+    } else {
+      console.log('Email sent:', info.response)
+    }
+  })
+  res.json({
+    message: 'Password reset link has been sent to your email',
+  })
+}
+const sendResetPasswordTokenStatus = async (req, res) => {
+  res.json({
+    valid: true,
+  })
+}
+const resetPassword = async (req, res) => {
+  const { newPassword, userId } = req.body
+  const user = await User.findById(userId)
+  const matched = await user.comparePassword(newPassword)
+
+  if (matched) {
+    return res.status(401).json({
+      error: 'New password cannot be same as old password',
+    })
+  }
+  user.password = newPassword
+  console.log(req.resetToken)
+  await passwordResetToken.findOneAndDelete(req.resetToken._id)
+  await user.save()
+  var transport = mailTransporterGeneration()
+
+  const mailOptions = {
+    from: 'notifications@movieapp.com',
+    to: user.email,
+    subject: 'Password Successfully Reset for Couch Potato',
+    html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 5px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+            <h1 style="color: #333; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px;">Hello ${user.name}!</h1>
+            <p style="font-size: 16px; color: #555; margin-top: 20px;">Your password for Couch Potato has been successfully reset. If you didn't make this change or if you believe an unauthorized person has accessed your account, please contact our support team immediately.</p>
+            <p style="font-size: 14px; color: #777; margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 10px;">Stay safe,<br>MovieApp Team</p>
+        </div>
+    `,
+  }
+
+  transport.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error('Email send error:', error)
+    } else {
+      console.log('Email sent:', info.response)
+    }
+  })
+  res.json({
+    message: 'Password reset successfully',
+  })
+}
+
+const signin = async (req, res) => {
+  const { email, password } = req.body
+  const user = await User.findOne({ email })
+  if (!user) {
+    return res.status(401).json({
+      error: 'Email or password is incorrect',
+    })
+  }
+  const matched = await user.comparePassword(password)
+
+  if (!matched) {
+    return res.status(401).json({
+      error: 'Email or password is incorrect',
+    })
+  }
+  const { name, _id } = user
+  const jwttoken = jwt.sign(
+    { userid: user._id },
+    process.env.JWT_SECRET_TOKEN,
+    {
+      expiresIn: '1y',
+    },
+  )
+  res.status(201).json({
+    user: {
+      id: _id,
+      name,
+      email,
+      token: jwttoken,
+    },
+  })
+}
+
 module.exports = {
   createUser,
   emailVerify,
   resendEmailVerification,
+  forgotPassword,
+  sendResetPasswordTokenStatus,
+  resetPassword,
+  signin,
 }
